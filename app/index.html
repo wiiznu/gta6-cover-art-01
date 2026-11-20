@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#111119">
+    <meta name="description" content="A local-first neon city poster maker. Turn your own photos into a custom multi-panel cover.">
+    <title>Sunset Circuit — Photo Cover Studio</title>
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <div class="studio-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="Sunset Circuit home">
+          <span class="brand-mark" aria-hidden="true"><i></i><b></b></span>
+          <span class="brand-copy"><strong>SUNSET<span>/</span>CIRCUIT</strong><small>PHOTO COVER STUDIO</small></span>
+        </a>
+        <div class="top-center"><span class="live-dot"></span><span>LOCAL SESSION</span><span class="top-separator">/</span><span>NO UPLOADS</span></div>
+        <div class="top-actions"><span class="saved-mark"><span class="saved-check">✓</span> ALL CHANGES SAVED</span><button class="icon-button" id="resetButton" type="button" title="Reset the cover" aria-label="Reset cover">↺</button></div>
+      </header>
+
+      <main class="workspace">
+        <aside class="rail asset-rail" aria-label="Photo and panel controls">
+          <div class="rail-heading"><div><span class="eyebrow">01 / THE INGREDIENTS</span><h1>Build your scene</h1></div><span class="count-chip" id="photoCount">00</span></div>
+          <button class="upload-card" id="addPhotoButton" type="button">
+            <span class="upload-symbol">＋</span><span><strong>Bring in a photo</strong><small>JPG, PNG or WebP · stays here</small></span><span class="upload-arrow">↗</span>
+          </button>
+          <input id="photoInput" type="file" accept="image/*" multiple hidden>
+
+          <div class="section-title"><span>YOUR PHOTO ROLL</span><span class="micro-label">ON THIS DEVICE</span></div>
+          <div class="photo-library" id="photoLibrary"><div class="empty-library"><span class="empty-icon">▧</span><span>Your story starts with<br>one good photo.</span></div></div>
+
+          <div class="section-title panel-title"><span>THE COLLAGE</span><span class="micro-label">03 PANELS</span></div>
+          <div class="panel-list" id="panelList"></div>
+          <div class="rail-note"><span class="note-spark">✳</span><p>One image, three different moments. Choose a panel, then drag the art to find its angle.</p></div>
+        </aside>
+
+        <section class="stage" aria-label="Live cover preview">
+          <div class="stage-toolbar">
+            <div class="stage-title"><span class="eyebrow">YOUR COVER / <b>LIVE PREVIEW</b></span><span class="stage-subtitle">An after-dark story, made yours.</span></div>
+            <div class="format-switch" role="group" aria-label="Export format">
+              <button type="button" data-size="square"><span class="format-icon square-icon"></span><span>SQUARE</span></button>
+              <button type="button" data-size="portrait" class="active"><span class="format-icon portrait-icon"></span><span>PORTRAIT</span></button>
+              <button type="button" data-size="landscape"><span class="format-icon landscape-icon"></span><span>LANDSCAPE</span></button>
+            </div>
+          </div>
+          <div class="canvas-well" id="canvasWell">
+            <div class="poster-mat"><canvas id="poster" aria-label="Live poster preview"></canvas><span class="mat-corner corner-tl"></span><span class="mat-corner corner-tr"></span><span class="mat-corner corner-bl"></span><span class="mat-corner corner-br"></span></div>
+          </div>
+          <div class="stage-footer"><span class="drag-hint"><span class="mouse-glyph">◉</span> DRAG INSIDE A PANEL TO REFRAME</span><span class="canvas-readout" id="canvasReadout">1080 × 1350 <i>PNG</i></span></div>
+        </section>
+
+        <aside class="rail inspector-rail" aria-label="Cover design controls">
+          <div class="rail-heading inspector-heading"><div><span class="eyebrow">02 / THE WORDS</span><h2>Make it yours</h2></div><span class="edit-stamp">EDITABLE</span></div>
+          <label class="field-label" for="kickerInput">TOP LINE <span>SMALL + SHARP</span></label>
+          <input class="text-input kicker-input" id="kickerInput" type="text" maxlength="48" value="EVERY EXIT HAS A STORY" autocomplete="off">
+          <label class="field-label caption-label" for="captionInput">THE BIG LINE <span>YOUR MOMENT</span></label>
+          <textarea class="caption-input" id="captionInput" rows="2" maxlength="36" spellcheck="false">CITY AFTERGLOW</textarea>
+          <div class="caption-meta"><span>ALL CAPS LOOKS GOOD AFTER DARK</span><span id="captionCount">14 / 36</span></div>
+
+          <div class="section-title treatment-title"><span>COLOR STORY</span><span class="micro-label">ONE TAP</span></div>
+          <div class="treatment-picker" role="group" aria-label="Color treatment">
+            <button class="treatment active" data-theme="sunset" type="button"><span class="swatch sunset-swatch"><i></i></span><span><b>LAST LIGHT</b><small>peach / plum</small></span><span class="radio-mark"></span></button>
+            <button class="treatment" data-theme="lagoon" type="button"><span class="swatch lagoon-swatch"><i></i></span><span><b>BLUE HOUR</b><small>teal / indigo</small></span><span class="radio-mark"></span></button>
+            <button class="treatment" data-theme="rose" type="button"><span class="swatch rose-swatch"><i></i></span><span><b>NEON ROSE</b><small>coral / cherry</small></span><span class="radio-mark"></span></button>
+          </div>
+
+          <div class="section-title framing-title"><span>FRAME / PANEL <b id="selectedPanelName">A</b></span><span class="micro-label">DRAG TO MOVE</span></div>
+          <label class="slider-label" for="zoomSlider"><span>ZOOM</span><span id="zoomValue">1.0×</span></label>
+          <input class="range-slider" id="zoomSlider" type="range" min="1" max="2.8" step="0.01" value="1">
+          <div class="crop-helper"><span>FIT</span><span class="range-dots"><i></i><i></i><i></i><i></i><i></i></span><span>DETAIL</span></div>
+
+          <div class="export-card">
+            <div class="export-topline"><span class="export-icon">↓</span><span><b>Ready for the feed</b><small>One PNG, full resolution</small></span><span class="export-spark">✦</span></div>
+            <div class="export-buttons"><button class="export-button" id="exportButton" type="button"><span>EXPORT COVER</span><span>↗</span></button></div>
+            <div class="export-hint"><span class="shield-icon">◈</span> 100% LOCAL · NO WATERMARK</div>
+          </div>
+        </aside>
+      </main>
+      <footer class="footerbar"><span>✳ &nbsp; MADE FOR THE IN-BETWEEN HOURS</span><span>YOUR PHOTOS NEVER LEAVE YOUR DEVICE <i>●</i></span><span>SC  /  VOL. 06</span></footer>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </div>
+    <script src="./app.js"></script>
+  </body>
+</html>

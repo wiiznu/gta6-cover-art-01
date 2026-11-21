@@ -4,73 +4,76 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="theme-color" content="#17151c">
-  <title>Sunset Circuit / Cover Studio</title>
+  <meta name="theme-color" content="#17151e">
+  <title>Sunset Circuit — Cover Studio</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="#studio"><b class="brand-mark">SC</b> Sunset Circuit<span class="brand-slash">/</span><small>COVER STUDIO</small></a>
-    <span class="privacy"><i></i> LOCAL FILES. LIMITLESS NIGHTS.</span>
-    <button id="resetButton" class="quiet" type="button">Reset studio ↺</button>
+    <a class="brand" href="#studio"><b>SC</b><span>Sunset Circuit<small>THE LOCAL COVER STUDIO</small></span></a>
+    <span class="privacy">● YOUR PHOTOS. YOUR MACHINE.</span>
+    <button id="resetButton" type="button" class="quiet">Reset studio ↺</button>
   </header>
   <main id="studio" class="workspace">
-    <section class="preview-column" aria-label="Cover art preview">
-      <div class="preview-heading"><div><span class="eyebrow">YOUR NEXT MAIN CHARACTER MOMENT</span><h1>Set the city alight.</h1></div><span class="live">● LIVE</span></div>
+    <section class="preview-column" aria-label="Live cover preview">
+      <div class="preview-heading"><div><span class="eyebrow">A LITTLE HEAT. A LOT OF CHARACTER.</span><h1>Own the afterglow.</h1></div><span class="live">● LIVE</span></div>
       <div id="dropZone" class="canvas-wrap">
-        <canvas id="coverCanvas" width="864" height="1080" tabindex="0" aria-label="Cover preview. Drag a photo panel to reframe. Use the adjacent crop sliders for keyboard controls.">Your browser needs canvas support to display the cover.</canvas>
-        <span id="dropHint" class="drop-hint">DROP YOUR PHOTOS HERE / OR ADD THEM →</span>
+        <canvas id="coverCanvas" width="864" height="1080" tabindex="0" aria-label="Cover preview. Drag a photo panel to reframe; crop sliders provide keyboard controls.">Canvas is required to render this cover.</canvas>
+        <span id="dropHint" class="drop-hint">DROP YOUR PHOTOS / MAKE THE CITY YOURS</span>
       </div>
-      <div class="preview-foot"><span id="layoutReadout">PORTRAIT / FOUR PANELS</span><span>DRAG A PHOTO PANEL TO REFRAME ↔</span></div>
-      <p class="preview-note">Your scene. Your city. Your afterglow.<br><span>Original skyline illustration · photos never uploaded</span></p>
+      <div class="preview-foot"><span id="layoutReadout">PORTRAIT / FOUR PANELS</span><span>DRAG TO REFRAME ↔</span></div>
+      <p class="preview-note">Made for the nights you keep.<small>Original city illustration. No uploads, ever.</small></p>
     </section>
-    <aside class="control-column" aria-label="Studio controls">
+    <aside class="control-column" aria-label="Cover controls">
       <section class="control-section">
-        <div class="section-title"><div><span class="eyebrow">01 / CAST THE SCENE</span><h2>Bring your own story</h2></div><span id="photoCount" class="count">0 / 8</span></div>
-        <label class="upload" for="photoInput"><b>＋</b><span>Add your photos<small>JPG, PNG, WebP · on your device only</small></span><b>↗</b></label>
-        <input id="photoInput" class="file-input" type="file" accept="image/*" multiple aria-label="Add up to eight photos">
-        <div id="photoTray" class="photo-tray" aria-label="Choose a photo for the selected panel"></div>
-        <div id="panelPicker" class="segmented" role="group" aria-label="Select a photo panel"></div>
-        <p class="help">Select a panel, then a photo to assign it.</p>
+        <div class="section-title"><div><span class="eyebrow">01 / THE CAST</span><h2>Put yourself in the picture</h2></div><span id="photoCount">0 / 8</span></div>
+        <label class="upload" for="photoInput"><b>＋</b><span>Add your photos<small>JPG, PNG, WebP · stays on this device</small></span><b>↗</b></label>
+        <input id="photoInput" class="file-input" type="file" accept="image/*" multiple aria-label="Add up to eight local photos">
+        <div id="photoTray" class="photo-tray" aria-label="Assign photo to selected panel"></div>
+        <div id="panelPicker" class="segmented" role="group" aria-label="Selected panel"></div>
+        <p class="help">Pick a panel, then a thumbnail. Each crop is independent.</p>
         <div class="range-heading"><label for="zoomSlider">Panel zoom</label><output id="zoomReadout">1.00×</output></div>
         <input id="zoomSlider" type="range" min="1" max="3" step="0.01" value="1">
-        <div class="crop-grid"><label for="panX">Horizontal<input id="panX" type="range" min="-1" max="1" step="0.01" value="0"></label><label for="panY">Vertical<input id="panY" type="range" min="-1" max="1" step="0.01" value="0"></label></div>
+        <div class="crop-grid">
+          <label for="panX">Horizontal<input id="panX" type="range" min="-1" max="1" step="0.01" value="0"></label>
+          <label for="panY">Vertical<input id="panY" type="range" min="-1" max="1" step="0.01" value="0"></label>
+        </div>
         <button id="resetCrop" class="quiet" type="button">Reset selected crop</button>
       </section>
       <section class="control-section">
-        <div class="section-title"><div><span class="eyebrow">02 / FRAME THE NIGHT</span><h2>Choose a composition</h2></div></div>
-        <div class="segmented" role="group" aria-label="Composition">
-          <button data-layout="portrait" type="button" class="is-active">▯ Portrait</button>
+        <span class="eyebrow">02 / THE FRAME</span><h2>Find your angle</h2>
+        <div class="segmented" role="group" aria-label="Preview format">
+          <button data-layout="portrait" type="button">▯ Portrait</button>
           <button data-layout="square" type="button">□ Square</button>
           <button data-layout="landscape" type="button">▭ Wide</button>
         </div>
       </section>
       <section class="control-section">
-        <div class="section-title"><div><span class="eyebrow">03 / CHASE THE LIGHT</span><h2>Set the afterglow</h2></div></div>
-        <div class="grades" role="group" aria-label="Colour grade">
-          <button data-grade="sunset" class="grade is-active" type="button"><span class="swatch sunset"></span><b>Vice Sunset</b><small>AMBER / ROSE / VIOLET</small></button>
+        <span class="eyebrow">03 / THE ATMOSPHERE</span><h2>Chase the light</h2>
+        <div class="grades" role="group" aria-label="Colour treatment">
+          <button data-grade="sunset" class="grade" type="button"><span class="swatch sunset"></span><b>Vice Sunset</b><small>AMBER / ROSE / VIOLET</small></button>
           <button data-grade="neon" class="grade" type="button"><span class="swatch neon"></span><b>Neon Night</b><small>CYAN / ELECTRIC PINK</small></button>
         </div>
       </section>
       <section class="control-section">
-        <div class="section-title"><div><span class="eyebrow">04 / LEAVE YOUR MARK</span><h2>Make it yours</h2></div><span class="type-tag">BOLD BY NATURE</span></div>
+        <span class="eyebrow">04 / THE LAST WORD</span><h2>Leave your mark</h2>
         <label class="field-label" for="captionInput">YOUR CAPTION</label>
         <input id="captionInput" class="text-field" maxlength="54" value="THE CITY NEVER COOLS" autocomplete="off" spellcheck="false">
         <div class="caption-foot"><span>CITY AFTERGLOW / SIGNATURE TITLE</span><output id="captionCount">20 / 54</output></div>
       </section>
       <section class="export-section">
-        <div class="section-title"><div><span class="eyebrow">05 / TAKE IT TO THE STREETS</span><h2>Export your cover</h2></div><span class="type-tag">PNG</span></div>
+        <span class="eyebrow">05 / THE GETAWAY</span><h2>Take the night with you</h2>
         <div class="exports">
           <button data-size="square" type="button"><span>Square<small>1080 × 1080</small></span><b>↓</b></button>
-          <button data-size="portrait" class="primary" type="button"><span>Portrait<small>1080 × 1350</small></span><b>↓</b></button>
+          <button data-size="portrait" type="button" class="primary"><span>Portrait<small>1080 × 1350</small></span><b>↓</b></button>
           <button data-size="landscape" type="button"><span>Wide<small>1920 × 1080</small></span><b>↓</b></button>
         </div>
-        <p id="exportStatus" class="status" role="status" aria-live="polite">Ready when you are. Every pixel stays local.</p>
+        <p id="exportStatus" class="status" role="status" aria-live="polite">Ready. Start with a photo or explore the illustrated city.</p>
       </section>
     </aside>
   </main>
-  <footer><b>SC / 06</b><span>PERSONAL COVER ART / ORIGINAL CITY ENERGY</span><span>MADE FOR THE AFTERGLOW ↗</span></footer>
+  <footer><b>SC / 06</b><span>PERSONAL STORIES. ORIGINAL CITY ENERGY.</span><span>AFTER HOURS / ALWAYS LOCAL ↗</span></footer>
 </body>
 </html>

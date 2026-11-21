@@ -1,39 +1,53 @@
-import { cpSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { cpSync, existsSync, mkdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { buildDossier } from './vendor/makefun-app.ts';
 
-const root = import.meta.dirname;
-const output = resolve(process.env.MAKEFUN_OUTPUT_DIR || '/output');
+const repository = realpathSync(import.meta.dirname);
 
-function contains(parent, child) {
-  const path = relative(parent, child);
-  return path === '' || (path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path));
+// Resolve existing ancestors too, so a symlink cannot bypass the overlap guard.
+function physicalPath(path) {
+  let ancestor = resolve(path);
+  const suffix = [];
+  while (!existsSync(ancestor)) {
+    const parent = dirname(ancestor);
+    if (parent === ancestor) throw new Error('No existing ancestor for output directory.');
+    suffix.unshift(basename(ancestor));
+    ancestor = parent;
+  }
+  return join(realpathSync(ancestor), ...suffix);
+}
+const destination = physicalPath(process.env.MAKEFUN_OUTPUT_DIR || '/output');
+
+function includesPath(parent, child) {
+  const difference = relative(parent, child);
+  return difference === '' || (!isAbsolute(difference) && difference !== '..' && !difference.startsWith(`..${sep}`));
 }
 
-// Reject overlap before removing previous generated artifacts.
-if (contains(root, output) || contains(output, root)) {
-  throw new Error('MAKEFUN_OUTPUT_DIR must be outside the repository tree.');
+// Guard the source tree before replacing any previous delivery artifacts.
+if (includesPath(repository, destination) || includesPath(destination, repository)) {
+  throw new Error('Choose an output directory outside the repository, without overlap.');
 }
-mkdirSync(output, { recursive: true });
-// A failed rebuild must never leave an earlier successful dossier beside new files.
-rmSync(join(output, 'dossier.json'), { force: true });
-rmSync(join(output, '.dossier.pending'), { force: true });
-for (const name of ['app', 'screenshots']) {
-  const target = join(output, name);
+mkdirSync(destination, { recursive: true });
+const finalDossier = join(destination, 'dossier.json');
+const pendingDossier = join(destination, '.sunset-dossier.pending');
+rmSync(finalDossier, { force: true });
+rmSync(pendingDossier, { force: true });
+
+for (const directory of ['app', 'screenshots']) {
+  const source = join(repository, directory);
+  const target = join(destination, directory);
   rmSync(target, { recursive: true, force: true });
-  const source = join(root, name);
   if (existsSync(source)) cpSync(source, target, { recursive: true });
   else mkdirSync(target, { recursive: true });
 }
 
-// The kit intentionally rejects missing screenshots; never fabricate evidence.
-const dossier = buildDossier(output, {
-  text_max_bytes: 160 * 1024,
-  screenshots: { max: 4, max_bytes: 256 * 1024 },
+// Missing screenshots intentionally remain a kit error, never synthetic evidence.
+const bytes = buildDossier(destination, {
+  text_max_bytes: 163840,
+  screenshots: { max: 4, max_bytes: 262144 },
   app_max_files: 993,
-  app_max_bytes: 48 * 1024 * 1024,
+  app_max_bytes: 50331648,
   app_path_max_bytes: 1000,
 });
-const pending = join(output, '.dossier.pending');
-writeFileSync(pending, dossier);
-renameSync(pending, join(output, 'dossier.json'));
+writeFileSync(pendingDossier, bytes);
+renameSync(pendingDossier, finalDossier);

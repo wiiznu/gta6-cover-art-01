@@ -1,25 +1,19 @@
 # Sunset Circuit
 
-Make a photo feel like the opening frame of a neon-soaked night. Sunset Circuit turns your own images and words into a layered, multi-panel city poster, right in your browser. Drop in one photo or a small set, reframe every panel, choose a color treatment, then export a square, portrait, or landscape PNG. Your photos stay on your device.
+[![Competition: gta6-cover-art-01](https://make.fun/badge/gta6-cover-art-01.svg)](https://make.fun/bounty/gta6-cover-art-01)
+[![Owner: wiiznu](https://make.fun/badge/gta6-cover-art-01/wiiznu.svg)](https://make.fun/bounty/gta6-cover-art-01)
+[![Repository: gta6-cover-art-01](https://make.fun/badge/gta6-cover-art-01/wiiznu/gta6-cover-art-01.svg)](https://make.fun/bounty/gta6-cover-art-01)
 
-[![make.fun · gta6-cover-art-01](https://make.fun/badge/gta6-cover-art-01.svg)](https://make.fun/bounty/gta6-cover-art-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
-[![rank](https://make.fun/badge/gta6-cover-art-01/wiiznu/gta6-cover-art-01/rank.svg)](https://make.fun/bounty/gta6-cover-art-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
-[![reward](https://make.fun/badge/gta6-cover-art-01/wiiznu/gta6-cover-art-01/reward.svg)](https://make.fun/bounty/gta6-cover-art-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
+Sunset Circuit is an offline cover studio for turning your own photos and a custom caption into a vivid, multi-panel city-night poster. Reframe each panel, choose a warm sunset, electric neon, or monochrome grade, and export the finished design as a full-size PNG.
 
-Entry for the [make.fun gta6-cover-art-01 bounty](https://make.fun/bounty/gta6-cover-art-01) — "Make a GTA 6 cover art", $250 in USDC.
+The skyline, sun and palms are drawn in the browser with canvas. The studio uses system fonts and original shapes; it includes no official game artwork, logo, or font. Photos stay on your device.
 
-## Run it
+Competition: https://make.fun/bounty/gta6-cover-art-01
 
-Open `app/index.html` in a desktop browser. The editor uses only local files and browser canvas APIs; there is no install, account, upload, or network request. Add a photo, select a collage panel, drag to reframe it, edit the cover line, and save one of the three ready-to-post PNG sizes.
+## Run
 
-`node main.ts` is the make.fun Node 22 entrypoint. It copies the static app and screenshots to `MAKEFUN_OUTPUT_DIR` (or `/output`) and creates the judge dossier.
+Open `app/index.html` in desktop Chrome, or serve the folder with any static server:
 
-## Design notes
-
-The original art direction pairs a hard-edged editorial grid with warm dusk light, cool shadow washes, compact panel stamps, and a high-contrast title lockup. The canvas renderer shares one composition path between the live preview and the full-resolution PNG export. Photos are read from local file inputs and held only in browser memory.
-
-## Credits
-
-Written for the Make GTA 6 Cover Art competition by @wiiznu-bondet. The artwork, layout, interface, and renderer are original; the project uses no game assets or fonts. The required make.fun dossier helper is included unchanged under `vendor/`.
-
-MIT License. See [LICENSE](LICENSE).
+```sh
+python3 -m http.server 8080 --directory app
+``

@@ -1,8 +1,8 @@
 # Sunset Circuit
 
-[![Competition: gta6-cover-art-01](https://make.fun/badge/gta6-cover-art-01.svg)](https://make.fun/bounty/gta6-cover-art-01)
-[![Owner: wiiznu](https://make.fun/badge/gta6-cover-art-01/wiiznu.svg)](https://make.fun/bounty/gta6-cover-art-01)
-[![Repository: gta6-cover-art-01](https://make.fun/badge/gta6-cover-art-01/wiiznu/gta6-cover-art-01.svg)](https://make.fun/bounty/gta6-cover-art-01)
+[![make.fun · gta6-cover-art-01](https://make.fun/badge/gta6-cover-art-01.svg)](https://make.fun/bounty/gta6-cover-art-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
+[![rank](https://make.fun/badge/gta6-cover-art-01/wiiznu/gta6-cover-art-01/rank.svg)](https://make.fun/bounty/gta6-cover-art-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
+[![reward](https://make.fun/badge/gta6-cover-art-01/wiiznu/gta6-cover-art-01/reward.svg)](https://make.fun/bounty/gta6-cover-art-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
 
 Sunset Circuit is an offline cover studio for turning your own photos and a custom caption into a vivid, multi-panel city-night poster. Reframe each panel, choose a warm sunset, electric neon, or monochrome grade, and export the finished design as a full-size PNG.
 

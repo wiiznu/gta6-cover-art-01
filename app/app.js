@@ -1,651 +1,494 @@
 (() => {
-  "use strict";
-
-  // Sunset Circuit keeps every selected image in this browser tab.
-  const MAX_PHOTOS = 8;
-  const PANEL_NAMES = ["HERO", "UPPER CUT", "SIDE STORY", "CITY STRIP"];
-  const LAYOUTS = {
-    portrait: { width: 900, height: 1125, label: "Portrait" },
-    square: { width: 900, height: 900, label: "Square" },
-    landscape: { width: 1200, height: 675, label: "Wide" }
-  };
-  const PANELS = {
-    portrait: [
-      { x: .045, y: .045, w: .62, h: .60 },
-      { x: .685, y: .045, w: .27, h: .285 },
-      { x: .685, y: .365, w: .27, h: .28 },
-      { x: .045, y: .685, w: .91, h: .27 }
-    ],
-    square: [
-      { x: .045, y: .045, w: .62, h: .545 },
-      { x: .685, y: .045, w: .27, h: .255 },
-      { x: .685, y: .335, w: .27, h: .255 },
-      { x: .045, y: .625, w: .91, h: .33 }
-    ],
-    landscape: [
-      { x: .045, y: .055, w: .55, h: .67 },
-      { x: .61, y: .055, w: .345, h: .30 },
-      { x: .61, y: .39, w: .345, h: .335 },
-      { x: .045, y: .765, w: .91, h: .19 }
-    ]
-  };
-  const GRADES = {
-    sunset: { top: "rgba(255, 163, 92, .20)", bottom: "rgba(157, 64, 125, .34)", tint: "#ef795c" },
-    neon: { top: "rgba(242, 50, 149, .22)", bottom: "rgba(21, 176, 205, .30)", tint: "#cb48b8" },
-    mono: { top: "rgba(226, 225, 229, .08)", bottom: "rgba(30, 34, 50, .33)", tint: "#a6a4b0" }
-  };
-  const TONES = {
-    sunset: ["#ffe18e", "#fa8777", "#a859a0"],
-    neon: ["#ff6cb7", "#cb68eb", "#69e9e4"],
-    mono: ["#fff8ef", "#c8c5cc", "#777985"]
-  };
-  const els = {
-    canvas: document.getElementById("coverCanvas"),
-    dropZone: document.getElementById("dropZone"),
-    dropHint: document.getElementById("dropHint"),
-    photoInput: document.getElementById("photoInput"),
-    photoCount: document.getElementById("photoCount"),
-    photoTray: document.getElementById("photoTray"),
-    panelPicker: document.getElementById("panelPicker"),
-    zoom: document.getElementById("zoomSlider"),
-    zoomReadout: document.getElementById("zoomReadout"),
-    layoutReadout: document.getElementById("layoutReadout"),
-    title: document.getElementById("titleInput"),
-    caption: document.getElementById("captionInput"),
-    exportStatus: document.getElementById("exportStatus"),
-    reset: document.getElementById("resetButton")
-  };
-  const ctx = els.canvas.getContext("2d", { alpha: false });
+  'use strict';
+  // Studio state: all user images live only in this page's memory.
+  const $ = (id) => document.getElementById(id);
+  const canvas = $('coverCanvas');
+  const context = canvas.getContext('2d');
+  const sizes = { square: [1080, 1080], portrait: [1080, 1350], landscape: [1920, 1080] };
+  const panelNames = ['Hero', 'Detail', 'Street'];
+  const freshPanel = () => ({ photo: -1, zoom: 1, x: 0, y: 0 });
   const state = {
-    photos: [],
-    layout: "portrait",
-    grade: "sunset",
-    tone: "sunset",
-    activePanel: 0,
-    panels: PANEL_NAMES.map(() => ({ photoIndex: 0, zoom: 1, panX: 0, panY: 0 })),
-    pointer: null,
-    dragDepth: 0
+    photos: [], panels: Array.from({ length: 3 }, freshPanel), selected: 0,
+    layout: 'portrait', grade: 'sunset', caption: 'THE CITY NEVER COOLS',
   };
-
-  // Layout, controls and canvas are driven from one small state object.
-  function currentPanel() {
-    return state.panels[state.activePanel];
+  const palettes = {
+    sunset: { sky: '#40225d', horizon: '#f47a91', sun: '#ffcf87', ink: '#211c39', light: '#ffb685', water: '#814671' },
+    neon: { sky: '#171e50', horizon: '#aa338f', sun: '#ff82d6', ink: '#101b37', light: '#63f2df', water: '#214a74' },
+  };
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  let drag = null;
+  let frame = 0;
+  let loading = false;
+  let exporting = false;
+  function announce(message) {
+    $('exportStatus').textContent = message;
+  }
+  function scheduleRender() {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      renderCover(context, canvas.width, canvas.height, state.layout, true);
+    });
   }
 
-  function activePhotoIndex() {
-    return currentPanel().photoIndex;
-  }
-
-  function selectedPhoto() {
-    return state.photos[activePhotoIndex()] || null;
-  }
-
-  function frameSize() {
-    return LAYOUTS[state.layout];
-  }
-
-  function panelRect(index, width = els.canvas.width, height = els.canvas.height) {
-    const unit = PANELS[state.layout][index];
-    return { x: unit.x * width, y: unit.y * height, w: unit.w * width, h: unit.h * height };
-  }
-
-  function fitCanvasToLayout() {
-    const size = frameSize();
-    els.canvas.width = size.width;
-    els.canvas.height = size.height;
-    els.layoutReadout.textContent = size.label + " · four panels";
-    drawCover();
-  }
-
-  // Photo loading uses object URLs only; no file data leaves the device.
-  function loadPhoto(file) {
+  // Photo loading: local object URLs only; failures leave other photos intact.
+  function decodePhoto(file) {
     return new Promise((resolve, reject) => {
-      if (!file || !file.type.startsWith("image/")) {
-        reject(new Error("Choose an image file."));
-        return;
-      }
       const url = URL.createObjectURL(file);
       const image = new Image();
-      image.onload = () => resolve({ name: file.name, url, image });
+      image.onload = () => {
+        if (!image.naturalWidth || !image.naturalHeight || image.naturalWidth * image.naturalHeight > 50_000_000) {
+          URL.revokeObjectURL(url);
+          reject(new Error('Empty image or image over 50 megapixels'));
+        } else resolve({ image, url, name: file.name });
+      };
       image.onerror = () => {
         URL.revokeObjectURL(url);
-        reject(new Error("This image could not be opened."));
+        reject(new Error('Unsupported or damaged image'));
       };
       image.src = url;
     });
   }
-
-  async function addPhotos(files) {
-    const available = Math.max(0, MAX_PHOTOS - state.photos.length);
-    const candidates = Array.from(files).filter((file) => file.type.startsWith("image/")).slice(0, available);
-    if (!candidates.length) {
-      setStatus(available ? "Choose JPG, PNG, or WebP images." : "The photo tray is full (8 images).", false);
-      return;
-    }
-    const results = await Promise.allSettled(candidates.map(loadPhoto));
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        state.photos.push(result.value);
-      } else {
-        setStatus(result.reason.message, false);
+  async function loadPhotos(fileList) {
+    if (loading) return announce('Please wait for the current photos to finish loading.');
+    const files = Array.from(fileList).filter((file) => file.type.startsWith('image/'));
+    const room = 8 - state.photos.length;
+    if (!files.length) return announce('Choose image files such as JPG, PNG or WebP.');
+    if (!room) return announce('Eight photos are loaded. Reset the studio to start a new set.');
+    loading = true;
+    $('resetButton').disabled = true;
+    announce('Decoding your local photos…');
+    let failed = 0;
+    const before = state.photos.length;
+    try {
+      for (const file of files.slice(0, room)) {
+        if (file.size > 40 * 1024 * 1024) { failed++; continue; }
+        try { state.photos.push(await decodePhoto(file)); }
+        catch { failed++; }
       }
+      if (before === 0 && state.photos.length) {
+        state.panels.forEach((panel, index) => { panel.photo = index % state.photos.length; });
+      } else if (state.photos.length > before) {
+        Object.assign(state.panels[state.selected], freshPanel(), { photo: before });
+      }
+      syncControls();
+      scheduleRender();
+      const added = state.photos.length - before;
+      announce(`${added} photo${added === 1 ? '' : 's'} added locally.${failed ? ` ${failed} could not be loaded (40 MB / 50 MP limits).` : ''}${files.length > room ? ' Only the first eight photos fit.' : ''}`);
+    } finally {
+      loading = false;
+      $('resetButton').disabled = false;
+      $('photoInput').value = '';
     }
-    if (state.photos.length) {
-      state.panels.forEach((panel) => {
-        panel.photoIndex = Math.min(panel.photoIndex, state.photos.length - 1);
-      });
-      if (state.photos.length === candidates.length) setStatus("Photos added. Select a panel, then a thumbnail to assign it.", true);
-    }
-    renderPhotoTray();
-    updatePanelControls();
-    drawCover();
   }
 
-  function releasePhotos() {
-    for (const photo of state.photos) URL.revokeObjectURL(photo.url);
-    state.photos = [];
-  }
-
-  function renderPhotoTray() {
-    els.photoTray.replaceChildren();
-    els.photoCount.textContent = state.photos.length + " / " + MAX_PHOTOS;
-    if (!state.photos.length) {
-      const empty = document.createElement("span");
-      empty.className = "empty-tray";
-      empty.textContent = "Your photo tray is empty";
-      els.photoTray.append(empty);
-      return;
-    }
-    state.photos.forEach((photo, index) => {
-      const button = document.createElement("button");
-      const image = document.createElement("img");
-      const badge = document.createElement("span");
-      button.type = "button";
-      button.className = "photo-thumb";
-      button.classList.toggle("is-active", index === activePhotoIndex());
-      button.title = "Assign " + photo.name + " to " + PANEL_NAMES[state.activePanel];
-      image.src = photo.url;
-      image.alt = "";
-      badge.className = "photo-index";
-      badge.textContent = String(index + 1).padStart(2, "0");
-      button.append(image, badge);
-      button.addEventListener("click", () => assignPhoto(index));
-      els.photoTray.append(button);
+  $('photoInput').addEventListener('change', (event) => loadPhotos(event.target.files));
+  for (const type of ['dragenter', 'dragover']) {
+    $('dropZone').addEventListener(type, (event) => {
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+      $('dropZone').classList.add('is-dragging');
     });
   }
+  $('dropZone').addEventListener('dragleave', (event) => {
+    if (!$('dropZone').contains(event.relatedTarget)) $('dropZone').classList.remove('is-dragging');
+  });
+  $('dropZone').addEventListener('drop', (event) => {
+    event.preventDefault();
+    $('dropZone').classList.remove('is-dragging');
+    loadPhotos(event.dataTransfer.files);
+  });
+  // Prevent an accidentally missed drop from navigating away from the studio.
+  window.addEventListener('dragover', (event) => event.preventDefault());
+  window.addEventListener('drop', (event) => event.preventDefault());
 
-  function renderPanelPicker() {
-    els.panelPicker.replaceChildren();
-    PANEL_NAMES.forEach((name, index) => {
-      const button = document.createElement("button");
-      const marker = document.createElement("span");
-      button.type = "button";
-      button.className = "panel-choice";
-      button.classList.toggle("is-active", index === state.activePanel);
-      marker.textContent = String(index + 1).padStart(2, "0");
-      button.append(marker, document.createTextNode(name));
-      button.addEventListener("click", () => selectPanel(index));
-      els.panelPicker.append(button);
+  // Panel reframing: normalized pan maps to available crop overflow, never blank edges.
+  function panelRects(width, height, layout) {
+    const g = Math.max(8, Math.round(width * .009));
+    const x = g, y = g, w = width - g * 2, h = height - g * 2;
+    const heroWidth = Math.round(w * (layout === 'landscape' ? .64 : .66));
+    const topHeight = Math.round(h * .73);
+    const sideWidth = w - heroWidth - g;
+    return [
+      { x, y, w: heroWidth, h: topHeight, index: 0 },
+      { x: x + heroWidth + g, y, w: sideWidth, h: Math.round((topHeight - g) * .51), index: 1 },
+      { x: x + heroWidth + g, y: y + Math.round((topHeight - g) * .51) + g,
+        w: sideWidth, h: topHeight - Math.round((topHeight - g) * .51) - g, index: 2 },
+      { x, y: y + topHeight + g, w, h: h - topHeight - g, index: 3 },
+    ];
+  }
+  function cropGeometry(image, rect, panel) {
+    const scale = Math.max(rect.w / image.naturalWidth, rect.h / image.naturalHeight) * panel.zoom;
+    const w = image.naturalWidth * scale, h = image.naturalHeight * scale;
+    return { w, h, overflowX: w - rect.w, overflowY: h - rect.h,
+      x: rect.x - (w - rect.w) * (1 - panel.x) / 2,
+      y: rect.y - (h - rect.h) * (1 - panel.y) / 2 };
+  }
+  function pointerPosition(event) {
+    const box = canvas.getBoundingClientRect();
+    // Canvas CSS uses object-fit: contain; account for letterboxing on tall screens.
+    const scale = Math.min(box.width / canvas.width, box.height / canvas.height);
+    const left = box.left + (box.width - canvas.width * scale) / 2;
+    const top = box.top + (box.height - canvas.height * scale) / 2;
+    return { x: (event.clientX - left) / scale, y: (event.clientY - top) / scale };
+  }
+
+  canvas.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    const point = pointerPosition(event);
+    const rect = panelRects(canvas.width, canvas.height, state.layout).find((r) =>
+      r.index < 3 && point.x >= r.x && point.x <= r.x + r.w && point.y >= r.y && point.y <= r.y + r.h);
+    if (!rect) return;
+    state.selected = rect.index;
+    syncControls();
+    scheduleRender();
+    const panel = state.panels[state.selected];
+    const photo = state.photos[panel.photo];
+    if (!photo) return;
+    drag = { point, rect, x: panel.x, y: panel.y, pointer: event.pointerId, panel };
+    canvas.setPointerCapture(event.pointerId);
+  });
+  canvas.addEventListener('pointermove', (event) => {
+    if (!drag || drag.pointer !== event.pointerId) return;
+    const point = pointerPosition(event);
+    const photo = state.photos[drag.panel.photo];
+    const geometry = cropGeometry(photo.image, drag.rect, drag.panel);
+    drag.panel.x = geometry.overflowX > .1 ? clamp(drag.x + 2 * (point.x - drag.point.x) / geometry.overflowX, -1, 1) : 0;
+    drag.panel.y = geometry.overflowY > .1 ? clamp(drag.y + 2 * (point.y - drag.point.y) / geometry.overflowY, -1, 1) : 0;
+    syncCrop();
+    scheduleRender();
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+    canvas.addEventListener(type, () => { drag = null; });
+  }
+  for (const [id, key] of [['zoomSlider', 'zoom'], ['panX', 'x'], ['panY', 'y']]) {
+    $(id).addEventListener('input', () => {
+      state.panels[state.selected][key] = Number($(id).value);
+      syncCrop();
+      scheduleRender();
     });
   }
+  $('resetCrop').addEventListener('click', () => {
+    const panel = state.panels[state.selected];
+    Object.assign(panel, { zoom: 1, x: 0, y: 0 });
+    syncCrop();
+    scheduleRender();
+  });
 
-  function selectPanel(index) {
-    state.activePanel = index;
-    renderPanelPicker();
-    renderPhotoTray();
-    updatePanelControls();
-    drawCover();
+  // Colour treatments: canvas filters plus gradient compositing apply to each photo.
+  function applyGrade(ctx, rect) {
+    const neon = state.grade === 'neon';
+    const wash = ctx.createLinearGradient(rect.x, rect.y, rect.x + rect.w, rect.y + rect.h);
+    wash.addColorStop(0, neon ? '#2fe9e8' : '#ffbd79');
+    wash.addColorStop(.52, neon ? '#ba3ba2' : '#ef797c');
+    wash.addColorStop(1, neon ? '#38339a' : '#6b397a');
+    ctx.globalCompositeOperation = 'soft-light';
+    ctx.globalAlpha = .58;
+    ctx.fillStyle = wash;
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    const shade = ctx.createLinearGradient(0, rect.y, 0, rect.y + rect.h);
+    shade.addColorStop(0, '#120d2400');
+    shade.addColorStop(.5, '#120d2410');
+    shade.addColorStop(1, '#120d24b8');
+    ctx.fillStyle = shade;
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
   }
-
-  function assignPhoto(index) {
-    if (!state.photos[index]) return;
-    currentPanel().photoIndex = index;
-    currentPanel().panX = 0;
-    currentPanel().panY = 0;
-    renderPhotoTray();
-    drawCover();
-    setStatus(PANEL_NAMES[state.activePanel] + " is using photo " + (index + 1) + ".", true);
-  }
-
-  function updatePanelControls() {
-    const zoom = currentPanel().zoom;
-    els.zoom.value = String(zoom);
-    els.zoomReadout.value = zoom.toFixed(2) + "×";
-    els.zoomReadout.textContent = els.zoomReadout.value;
-  }
-
-  // Panel reframing keeps the crop anchored to the panel currently selected.
-  function drawPhotoInPanel(photo, panel, rect, index) {
-    const image = photo.image;
-    const baseScale = Math.max(rect.w / image.naturalWidth, rect.h / image.naturalHeight);
-    const scale = baseScale * panel.zoom;
-    const drawWidth = image.naturalWidth * scale;
-    const drawHeight = image.naturalHeight * scale;
-    const extraX = Math.max(0, drawWidth - rect.w);
-    const extraY = Math.max(0, drawHeight - rect.h);
-    const x = rect.x + (rect.w - drawWidth) / 2 + panel.panX * extraX;
-    const y = rect.y + (rect.h - drawHeight) / 2 + panel.panY * extraY;
+  function drawPhotoPanel(ctx, rect) {
+    const panel = state.panels[rect.index];
+    const photo = state.photos[panel.photo];
     ctx.save();
     ctx.beginPath();
     ctx.rect(rect.x, rect.y, rect.w, rect.h);
     ctx.clip();
-    ctx.drawImage(image, x, y, drawWidth, drawHeight);
-    const grade = GRADES[state.grade];
-    const tint = ctx.createLinearGradient(rect.x, rect.y, rect.x, rect.y + rect.h);
-    tint.addColorStop(0, grade.top);
-    tint.addColorStop(1, grade.bottom);
-    ctx.fillStyle = tint;
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-    if (index === 3) drawCityOverlay(rect);
+    if (photo) {
+      const crop = cropGeometry(photo.image, rect, panel);
+      ctx.filter = state.grade === 'neon' ? 'contrast(1.16) saturate(1.25)' : 'contrast(1.12) saturate(1.12)';
+      ctx.drawImage(photo.image, crop.x, crop.y, crop.w, crop.h);
+      ctx.filter = 'none';
+      applyGrade(ctx, rect);
+    } else drawCity(ctx, rect, rect.index);
     ctx.restore();
   }
 
-  function drawEmptyPanel(rect, index) {
-    ctx.save();
-    const gradient = ctx.createLinearGradient(rect.x, rect.y, rect.x + rect.w, rect.y + rect.h);
-    gradient.addColorStop(0, index % 2 ? "#ed8068" : "#8b4678");
-    gradient.addColorStop(.52, "#d35172");
-    gradient.addColorStop(1, "#342844");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-    drawCityOverlay(rect);
-    ctx.restore();
-  }
-
-  // The skyline, striped sun and palms are original canvas shapes.
-  function drawCityOverlay(rect) {
-    const x = rect.x;
-    const y = rect.y;
-    const w = rect.w;
-    const h = rect.h;
-    ctx.save();
+  // City artwork: deterministic geometry, with no image assets or random dependencies.
+  function drawPalm(ctx, x, base, height, lean, ink) {
+    const crownX = x + height * lean, crownY = base - height;
+    ctx.strokeStyle = ink;
+    ctx.lineWidth = Math.max(3, height * .034);
     ctx.beginPath();
-    ctx.rect(x, y, w, h);
-    ctx.clip();
-    const sunRadius = Math.min(w, h) * .22;
-    const sunX = x + w * .72;
-    const sunY = y + h * .44;
-    const sun = ctx.createLinearGradient(sunX, sunY - sunRadius, sunX, sunY + sunRadius);
-    sun.addColorStop(0, "#ffd27a");
-    sun.addColorStop(.7, "#ff8a86");
-    sun.addColorStop(1, "#e86c91");
-    ctx.fillStyle = sun;
-    ctx.beginPath();
-    ctx.arc(sunX, sunY, sunRadius, Math.PI, Math.PI * 2);
-    ctx.lineTo(sunX + sunRadius, sunY + sunRadius);
-    ctx.lineTo(sunX - sunRadius, sunY + sunRadius);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = "rgba(255, 210, 175, .9)";
-    for (let line = 0; line < 5; line++) {
-      const stripeY = sunY + sunRadius * (.12 + line * .2);
-      ctx.fillRect(sunX - sunRadius, stripeY, sunRadius * 2, Math.max(2, h * .018));
-    }
-    const ground = y + h * .78;
-    ctx.fillStyle = "rgba(27, 22, 41, .72)";
-    ctx.beginPath();
-    ctx.moveTo(x, ground + h * .05);
-    let bx = x;
-    let seed = 13 + Math.floor(w + h);
-    while (bx < x + w) {
-      seed = (seed * 9301 + 49297) % 233280;
-      const buildingWidth = w * (.045 + (seed / 233280) * .07);
-      seed = (seed * 9301 + 49297) % 233280;
-      const buildingHeight = h * (.10 + (seed / 233280) * .25);
-      ctx.lineTo(bx, ground - buildingHeight);
-      ctx.lineTo(bx + buildingWidth * .82, ground - buildingHeight);
-      ctx.lineTo(bx + buildingWidth * .82, ground + h * .1);
-      bx += buildingWidth;
-    }
-    ctx.lineTo(x + w, y + h);
-    ctx.lineTo(x, y + h);
-    ctx.closePath();
-    ctx.fill();
-    drawPalm(x + w * .15, y + h * .83, h * .42);
-    drawPalm(x + w * .91, y + h * .86, h * .32);
-    ctx.restore();
-  }
-
-  function drawPalm(x, baseY, size) {
-    ctx.save();
-    ctx.strokeStyle = "rgba(23, 18, 35, .88)";
-    ctx.lineWidth = Math.max(2, size * .055);
-    ctx.lineCap = "round";
-    const topX = x + size * .12;
-    const topY = baseY - size;
-    ctx.beginPath();
-    ctx.moveTo(x, baseY);
-    ctx.quadraticCurveTo(x + size * .12, baseY - size * .45, topX, topY);
+    ctx.moveTo(x, base);
+    ctx.quadraticCurveTo(x + height * lean * .2, base - height * .6, crownX, crownY);
     ctx.stroke();
-    ctx.fillStyle = "rgba(23, 18, 35, .9)";
-    for (let frond = 0; frond < 7; frond++) {
-      const angle = Math.PI * 2 * frond / 7;
-      const endX = topX + Math.cos(angle) * size * .42;
-      const endY = topY + Math.sin(angle) * size * .22 - size * .04;
+    ctx.fillStyle = ink;
+    for (let leaf = 0; leaf < 9; leaf++) {
+      const angle = leaf * Math.PI * 2 / 9;
+      const reach = height * (.27 + .04 * Math.sin(leaf * 3));
+      const endX = crownX + Math.cos(angle) * reach;
+      const endY = crownY + Math.sin(angle) * reach * .5 + height * .09;
       ctx.beginPath();
-      ctx.moveTo(topX, topY);
-      ctx.quadraticCurveTo(topX + Math.cos(angle) * size * .18, topY - size * .12, endX, endY);
-      ctx.lineTo(topX + Math.cos(angle) * size * .2, topY + Math.sin(angle) * size * .08);
-      ctx.closePath();
+      ctx.moveTo(crownX, crownY);
+      ctx.quadraticCurveTo(crownX + Math.cos(angle) * reach * .6, crownY - height * .12, endX, endY);
+      ctx.quadraticCurveTo(crownX + Math.cos(angle) * reach * .3, crownY + height * .04, crownX, crownY);
       ctx.fill();
     }
-    ctx.restore();
   }
-
-  function drawBackdrop(width, height) {
-    const gradient = ctx.createLinearGradient(0, 0, width, height);
-    const colors = state.grade === "neon"
-      ? ["#25133f", "#802b68", "#166474"]
-      : state.grade === "mono" ? ["#373741", "#77717d", "#292936"] : ["#472b4b", "#d45c73", "#f4a264"];
-    gradient.addColorStop(0, colors[0]);
-    gradient.addColorStop(.55, colors[1]);
-    gradient.addColorStop(1, colors[2]);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, height);
-    const glow = ctx.createRadialGradient(width * .68, height * .32, 2, width * .68, height * .32, width * .72);
-    glow.addColorStop(0, "rgba(255, 190, 121, .38)");
-    glow.addColorStop(1, "rgba(31, 22, 45, 0)");
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, width, height);
-    drawCityOverlay({ x: 0, y: height * .49, w: width, h: height * .51 });
-  }
-
-  // Lettering is drawn with system fonts, layered shadow and custom gradient ink.
-  function drawLettering(width, height) {
-    const ribbonY = height * (state.layout === "landscape" ? .765 : .685);
-    const ribbonH = height - ribbonY;
-    const shade = ctx.createLinearGradient(0, ribbonY - height * .08, 0, height);
-    shade.addColorStop(0, "rgba(19, 15, 26, 0)");
-    shade.addColorStop(.22, "rgba(19, 15, 26, .58)");
-    shade.addColorStop(1, "rgba(19, 15, 26, .86)");
-    ctx.fillStyle = shade;
-    ctx.fillRect(0, ribbonY - height * .08, width, height - ribbonY + height * .08);
-    ctx.textAlign = "left";
-    ctx.textBaseline = "alphabetic";
-    const inset = width * .075;
-    const title = (els.title.value || "CITY AFTERGLOW").trim().toUpperCase();
-    const titleSize = Math.min(width * .106, ribbonH * .33);
-    ctx.font = "900 " + titleSize + 'px "Arial Black", Impact, system-ui, sans-serif';
-    ctx.lineJoin = "round";
-    ctx.lineWidth = Math.max(2, titleSize * .035);
-    ctx.strokeStyle = "rgba(34, 20, 39, .88)";
-    ctx.shadowColor = "rgba(18, 11, 26, .7)";
-    ctx.shadowBlur = titleSize * .15;
-    ctx.shadowOffsetY = titleSize * .06;
-    ctx.strokeText(title, inset, ribbonY + ribbonH * .52, width - inset * 2);
-    const tone = TONES[state.tone];
-    const lettering = ctx.createLinearGradient(inset, ribbonY, width - inset, ribbonY + ribbonH * .56);
-    lettering.addColorStop(0, tone[0]);
-    lettering.addColorStop(.58, tone[1]);
-    lettering.addColorStop(1, tone[2]);
-    ctx.fillStyle = lettering;
-    ctx.fillText(title, inset, ribbonY + ribbonH * .52, width - inset * 2);
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
-    ctx.fillStyle = "rgba(255, 244, 231, .94)";
-    ctx.font = "700 " + Math.max(11, width * .018) + 'px system-ui, sans-serif';
-    ctx.letterSpacing = "0.12em";
-    ctx.fillText((els.caption.value || "THE CITY NEVER COOLS").trim().toUpperCase(), inset + 2, ribbonY + ribbonH * .77, width - inset * 2);
-    ctx.textAlign = "right";
-    ctx.fillStyle = "rgba(255, 227, 200, .82)";
-    ctx.font = "800 " + Math.max(9, width * .014) + 'px system-ui, sans-serif';
-    ctx.fillText("SUNSET CIRCUIT   /   06", width - inset, ribbonY + ribbonH * .95);
-    ctx.textAlign = "left";
-    ctx.letterSpacing = "0px";
-  }
-
-  function drawCover() {
-    if (!ctx) return;
-    const width = els.canvas.width;
-    const height = els.canvas.height;
-    drawBackdrop(width, height);
-    for (let index = 0; index < PANEL_NAMES.length; index++) {
-      const rect = panelRect(index, width, height);
-      const panel = state.panels[index];
-      const photo = state.photos[panel.photoIndex];
-      ctx.save();
-      ctx.shadowColor = "rgba(17, 13, 22, .52)";
-      ctx.shadowBlur = width * .018;
-      ctx.shadowOffsetY = width * .008;
-      ctx.fillStyle = "#211a2b";
-      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-      ctx.restore();
-      if (photo) drawPhotoInPanel(photo, panel, rect, index);
-      else drawEmptyPanel(rect, index);
-      ctx.save();
-      ctx.strokeStyle = index === state.activePanel ? "rgba(255, 211, 151, .95)" : "rgba(255, 236, 222, .72)";
-      ctx.lineWidth = index === state.activePanel ? Math.max(2, width * .0032) : Math.max(1, width * .0016);
-      ctx.strokeRect(rect.x + .5, rect.y + .5, rect.w - 1, rect.h - 1);
-      ctx.restore();
-      drawPanelLabel(index, rect);
+  function drawCity(ctx, rect, variant = 0) {
+    const p = palettes[state.grade];
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(rect.x, rect.y, rect.w, rect.h);
+    ctx.clip();
+    ctx.translate(rect.x, rect.y);
+    const w = rect.w, h = rect.h;
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, p.sky);
+    sky.addColorStop(.58, p.horizon);
+    sky.addColorStop(1, p.sun);
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+    const radius = Math.min(w * .25, h * .32);
+    const sunX = w * (.66 - variant * .05), sunY = h * .36;
+    ctx.fillStyle = p.sun;
+    ctx.beginPath();
+    ctx.arc(sunX, sunY, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(sunX, sunY, radius, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = p.horizon;
+    for (let stripe = 0; stripe < 7; stripe++) {
+      ctx.fillRect(sunX - radius, sunY + stripe * radius * .135, radius * 2, radius * (.012 + stripe * .008));
     }
-    drawLettering(width, height);
-    drawCornerDetails(width, height);
-    els.dropHint.classList.toggle("is-visible", state.photos.length === 0);
-  }
-
-  function drawPanelLabel(index, rect) {
-    if (rect.w < 140 || rect.h < 80) return;
-    ctx.save();
-    ctx.font = "800 " + Math.max(9, rect.w * .018) + 'px system-ui, sans-serif';
-    ctx.textAlign = "left";
-    ctx.fillStyle = "rgba(255, 245, 232, .86)";
-    ctx.shadowColor = "#19111d";
-    ctx.shadowBlur = 5;
-    ctx.fillText(String(index + 1).padStart(2, "0") + "  /  " + PANEL_NAMES[index], rect.x + rect.w * .045, rect.y + rect.h * .91, rect.w * .88);
     ctx.restore();
-  }
-
-  function drawCornerDetails(width, height) {
-    ctx.save();
-    ctx.globalAlpha = .8;
-    ctx.fillStyle = "#ffe7c8";
-    ctx.font = "800 " + Math.max(9, width * .013) + 'px system-ui, sans-serif';
-    ctx.textAlign = "left";
-    ctx.fillText("VICE CITY • FLORIDA", width * .05, height * .032);
-    ctx.textAlign = "right";
-    ctx.fillText("NIGHT DRIVE EDITION", width * .95, height * .032);
-    ctx.restore();
-  }
-
-  // Grade and layout buttons update the live artboard immediately.
-  function selectGrade(grade) {
-    if (!GRADES[grade]) return;
-    state.grade = grade;
-    document.querySelectorAll("[data-grade]").forEach((button) => {
-      button.classList.toggle("is-active", button.dataset.grade === grade);
-    });
-    drawCover();
-  }
-
-  function selectTone(tone) {
-    if (!TONES[tone]) return;
-    state.tone = tone;
-    document.querySelectorAll("[data-tone]").forEach((button) => {
-      button.classList.toggle("is-active", button.dataset.tone === tone);
-    });
-    drawCover();
-  }
-
-  function selectLayout(layout) {
-    if (!LAYOUTS[layout]) return;
-    state.layout = layout;
-    document.querySelectorAll("[data-layout]").forEach((button) => {
-      button.classList.toggle("is-active", button.dataset.layout === layout);
-    });
-    fitCanvasToLayout();
-  }
-
-  function setStatus(message, success) {
-    els.exportStatus.textContent = message;
-    els.exportStatus.classList.toggle("is-success", Boolean(success));
-  }
-
-  // Export uses a fresh full-resolution canvas so preview scaling never reduces detail.
-  function exportCover(kind) {
-    const sizes = {
-      square: [1080, 1080],
-      portrait: [1080, 1350],
-      landscape: [1920, 1080]
-    };
-    const dimensions = sizes[kind];
-    if (!dimensions) return;
-    const outputCanvas = document.createElement("canvas");
-    outputCanvas.width = dimensions[0];
-    outputCanvas.height = dimensions[1];
-    const outputContext = outputCanvas.getContext("2d");
-    const previousCanvas = { width: els.canvas.width, height: els.canvas.height };
-    const previousLayout = state.layout;
-    const targetLayout = kind;
-    const sourcePanels = state.panels.map((panel) => ({ ...panel }));
-    state.layout = targetLayout;
-    els.canvas.width = dimensions[0];
-    els.canvas.height = dimensions[1];
-    drawCover();
-    outputContext.drawImage(els.canvas, 0, 0);
-    state.panels = sourcePanels;
-    state.layout = previousLayout;
-    els.canvas.width = previousCanvas.width;
-    els.canvas.height = previousCanvas.height;
-    drawCover();
-    outputCanvas.toBlob((blob) => {
-      if (!blob) {
-        setStatus("PNG export could not be created. Please try again.", false);
-        return;
+    ctx.fillStyle = p.water;
+    ctx.fillRect(0, h * .66, w, h * .34);
+    for (let i = 0; i < 22; i++) {
+      const x = (i / 21) * w;
+      const buildingW = w / 18;
+      const buildingH = h * (.13 + .26 * ((Math.sin(i * 7.13 + variant) + 1) / 2));
+      const roof = h * .72 - buildingH;
+      ctx.fillStyle = i % 3 ? p.ink : '#302640';
+      ctx.fillRect(x, roof, buildingW, buildingH);
+      if (i % 4 === 0) ctx.fillRect(x + buildingW * .43, roof - h * .045, buildingW * .08, h * .05);
+      ctx.fillStyle = p.light;
+      ctx.globalAlpha = .7;
+      for (let row = 1; row < 8; row++) {
+        if (row * h * .024 >= buildingH) break;
+        for (let col = 1; col < 4; col++) {
+          if ((row + col + i) % 3) ctx.fillRect(x + col * buildingW * .2, roof + row * h * .024, Math.max(1, buildingW * .08), Math.max(1, h * .007));
+        }
       }
+      ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = p.ink;
+    ctx.beginPath();
+    ctx.moveTo(w * .38, h * .72);
+    ctx.lineTo(w * .56, h * .72);
+    ctx.lineTo(w * 1.15, h);
+    ctx.lineTo(-w * .3, h);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = p.light;
+    ctx.lineWidth = Math.max(1, w * .003);
+    for (const side of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(w * .47 + side * w * .06, h * .73);
+      ctx.lineTo(w * .47 + side * w * .7, h);
+      ctx.stroke();
+    }
+    ctx.setLineDash([h * .025, h * .025]);
+    ctx.beginPath();
+    ctx.moveTo(w * .47, h * .76);
+    ctx.lineTo(w * .47, h);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    drawPalm(ctx, w * .12, h * .94, h * .62, .12, p.ink);
+    drawPalm(ctx, w * .88, h * .9, h * .5, -.1, p.ink);
+    ctx.restore();
+  }
+
+  // Lettering: heavy local system fonts, fitted to the actual export dimensions.
+  function fittedText(ctx, text, x, baseline, maxWidth, fontSize, fill, outline) {
+    ctx.save();
+    ctx.font = `900 ${fontSize}px Impact, Haettenschweiler, 'Arial Black', sans-serif`;
+    ctx.textBaseline = 'alphabetic';
+    const width = ctx.measureText(text).width;
+    ctx.translate(x, baseline);
+    ctx.scale(Math.min(1, maxWidth / Math.max(1, width)), 1);
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = outline;
+    ctx.strokeStyle = '#171223';
+    ctx.strokeText(text, 0, 0);
+    ctx.fillStyle = fill;
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
+  }
+  function drawLettering(ctx, width, height, layout) {
+    const wide = layout === 'landscape';
+    const unit = Math.min(width, height);
+    const left = width * .045;
+    const fontSize = unit * (wide ? .155 : .145);
+    const base = height * .69;
+    const titleFill = ctx.createLinearGradient(0, base - fontSize * 1.65, 0, base);
+    titleFill.addColorStop(0, '#fff5d9');
+    titleFill.addColorStop(.55, state.grade === 'neon' ? '#8ef8ec' : '#ffcb8c');
+    titleFill.addColorStop(1, state.grade === 'neon' ? '#ee83da' : '#fa8d9d');
+    fittedText(ctx, 'CITY', left + unit * .005, base - fontSize * .94, width * .57, fontSize, titleFill, unit * .014);
+    fittedText(ctx, 'AFTERGLOW', left, base, width * .9, fontSize, titleFill, unit * .014);
+    ctx.save();
+    ctx.fillStyle = '#161324e8';
+    ctx.fillRect(width * .035, height * .755, width * .93, unit * .052);
+    ctx.font = `800 ${unit * .022}px Arial, sans-serif`;
+    ctx.fillStyle = '#fff0d1';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(state.caption.toUpperCase(), width / 2, height * .755 + unit * .026, width * .87);
+    ctx.textAlign = 'left';
+    ctx.font = `700 ${unit * .012}px Arial, sans-serif`;
+    ctx.fillStyle = '#ffe0b2';
+    ctx.fillText('SUNSET CIRCUIT / A PERSONAL CITY STORY', width * .04, height * .965);
+    ctx.restore();
+  }
+  function renderCover(ctx, width, height, layout, editor = false) {
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = '#171223';
+    ctx.fillRect(0, 0, width, height);
+    const rects = panelRects(width, height, layout);
+    for (const rect of rects) {
+      if (rect.index < 3) drawPhotoPanel(ctx, rect);
+      else drawCity(ctx, rect, 3);
+    }
+    drawLettering(ctx, width, height, layout);
+    if (editor && state.photos.length) {
+      const rect = rects[state.selected];
+      ctx.save();
+      ctx.strokeStyle = '#a4fff1';
+      ctx.lineWidth = Math.max(2, width * .002);
+      ctx.setLineDash([width * .009, width * .006]);
+      ctx.strokeRect(rect.x + 3, rect.y + 3, rect.w - 6, rect.h - 6);
+      ctx.restore();
+    }
+  }
+
+  // PNG exports: independent full-size canvases omit the editor selection frame.
+  async function exportPNG(kind) {
+    if (exporting) return;
+    exporting = true;
+    document.querySelectorAll('[data-size]').forEach((button) => { button.disabled = true; });
+    announce('Rendering your full-resolution PNG…');
+    try {
+      const [width, height] = sizes[kind];
+      const renderedGrade = state.grade;
+      const output = document.createElement('canvas');
+      output.width = width;
+      output.height = height;
+      renderCover(output.getContext('2d'), width, height, kind);
+      const blob = await new Promise((resolve) => output.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error('PNG encoder returned no image');
       const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
+      const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = "sunset-circuit-" + kind + "-" + dimensions.join("x") + ".png";
+      anchor.download = `sunset-circuit-${kind}-${renderedGrade}.png`;
       document.body.append(anchor);
       anchor.click();
       anchor.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setStatus("Downloaded " + dimensions[0] + " × " + dimensions[1] + " PNG.", true);
-    }, "image/png");
-  }
-
-  // Pointer motion shifts the selected crop without changing the other panels.
-  function pointerPosition(event) {
-    const bounds = els.canvas.getBoundingClientRect();
-    return {
-      x: (event.clientX - bounds.left) * els.canvas.width / bounds.width,
-      y: (event.clientY - bounds.top) * els.canvas.height / bounds.height
-    };
-  }
-
-  function panelAt(point) {
-    return PANELS[state.layout].findIndex((unit) => {
-      const rect = { x: unit.x * els.canvas.width, y: unit.y * els.canvas.height, w: unit.w * els.canvas.width, h: unit.h * els.canvas.height };
-      return point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h;
-    });
-  }
-
-  function beginReframe(event) {
-    if (event.button !== 0) return;
-    const point = pointerPosition(event);
-    const targetPanel = panelAt(point);
-    if (targetPanel < 0) return;
-    if (targetPanel !== state.activePanel) selectPanel(targetPanel);
-    state.pointer = { id: event.pointerId, point, panel: state.activePanel };
-    els.canvas.setPointerCapture(event.pointerId);
-  }
-
-  function moveReframe(event) {
-    if (!state.pointer || state.pointer.id !== event.pointerId) return;
-    const next = pointerPosition(event);
-    const rect = panelRect(state.pointer.panel);
-    const panel = state.panels[state.pointer.panel];
-    const photo = state.photos[panel.photoIndex];
-    if (!photo) {
-      state.pointer.point = next;
-      return;
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      announce(`Downloaded ${width} × ${height} PNG. Your afterglow is ready.`);
+    } catch (error) { announce(`Export failed: ${error.message}. Try a smaller format.`); }
+    finally {
+      exporting = false;
+      document.querySelectorAll('[data-size]').forEach((button) => { button.disabled = false; });
     }
-    const scale = Math.max(rect.w / photo.image.naturalWidth, rect.h / photo.image.naturalHeight) * panel.zoom;
-    const overflowX = Math.max(1, photo.image.naturalWidth * scale - rect.w);
-    const overflowY = Math.max(1, photo.image.naturalHeight * scale - rect.h);
-    panel.panX = clamp(panel.panX + (next.x - state.pointer.point.x) / overflowX, -.5, .5);
-    panel.panY = clamp(panel.panY + (next.y - state.pointer.point.y) / overflowY, -.5, .5);
-    state.pointer.point = next;
-    drawCover();
   }
 
-  function endReframe(event) {
-    if (state.pointer && state.pointer.id === event.pointerId) state.pointer = null;
+  function syncCrop() {
+    const panel = state.panels[state.selected];
+    $('zoomSlider').value = panel.zoom;
+    $('zoomReadout').textContent = `${panel.zoom.toFixed(2)}×`;
+    $('panX').value = panel.x;
+    $('panY').value = panel.y;
   }
 
-  function clamp(value, low, high) {
-    return Math.min(high, Math.max(low, value));
-  }
-
-  function resetStudio() {
-    releasePhotos();
-    state.layout = "portrait";
-    state.grade = "sunset";
-    state.tone = "sunset";
-    state.activePanel = 0;
-    state.panels = PANEL_NAMES.map(() => ({ photoIndex: 0, zoom: 1, panX: 0, panY: 0 }));
-    els.title.value = "CITY AFTERGLOW";
-    els.caption.value = "THE CITY NEVER COOLS";
-    els.photoInput.value = "";
-    document.querySelectorAll("[data-layout]").forEach((button) => button.classList.toggle("is-active", button.dataset.layout === "portrait"));
-    document.querySelectorAll("[data-grade]").forEach((button) => button.classList.toggle("is-active", button.dataset.grade === "sunset"));
-    document.querySelectorAll("[data-tone]").forEach((button) => button.classList.toggle("is-active", button.dataset.tone === "sunset"));
-    renderPhotoTray();
-    renderPanelPicker();
-    updatePanelControls();
-    fitCanvasToLayout();
-    setStatus("Studio reset. Add a photo to start a new cover.", true);
-  }
-
-  function bindEvents() {
-    els.photoInput.addEventListener("change", (event) => {
-      addPhotos(event.target.files);
-      event.target.value = "";
+  function syncControls() {
+    $('photoCount').textContent = `${state.photos.length} / 8`;
+    $('dropHint').hidden = state.photos.length > 0;
+    $('photoTray').replaceChildren();
+    if (!state.photos.length) {
+      const empty = document.createElement('span');
+      empty.className = 'empty-tray';
+      empty.textContent = 'Your photo tray is waiting for a story.';
+      $('photoTray').append(empty);
+    }
+    state.photos.forEach((photo, index) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'photo-thumb';
+      button.classList.toggle('is-active', state.panels[state.selected].photo === index);
+      button.setAttribute('aria-label', `Assign ${photo.name} to ${panelNames[state.selected]}`);
+      button.setAttribute('aria-pressed', String(state.panels[state.selected].photo === index));
+      const image = document.createElement('img');
+      image.src = photo.url;
+      image.alt = '';
+      button.append(image);
+      button.addEventListener('click', () => {
+        Object.assign(state.panels[state.selected], freshPanel(), { photo: index });
+        syncControls();
+        scheduleRender();
+      });
+      $('photoTray').append(button);
     });
-    els.dropZone.addEventListener("dragenter", (event) => {
-      event.preventDefault();
-      state.dragDepth++;
-      els.dropHint.classList.add("is-visible");
+    document.querySelectorAll('#panelPicker button').forEach((button, index) => {
+      button.classList.toggle('is-active', index === state.selected);
+      button.setAttribute('aria-pressed', String(index === state.selected));
     });
-    els.dropZone.addEventListener("dragover", (event) => event.preventDefault());
-    els.dropZone.addEventListener("dragleave", (event) => {
-      event.preventDefault();
-      state.dragDepth = Math.max(0, state.dragDepth - 1);
-      if (!state.dragDepth && state.photos.length) els.dropHint.classList.remove("is-visible");
-    });
-    els.dropZone.addEventListener("drop", (event) => {
-      event.preventDefault();
-      state.dragDepth = 0;
-      addPhotos(event.dataTransfer.files);
-    });
-    els.zoom.addEventListener("input", () => {
-      currentPanel().zoom = Number(els.zoom.value);
-      updatePanelControls();
-      drawCover();
-    });
-    els.title.addEventListener("input", drawCover);
-    els.caption.addEventListener("input", drawCover);
-    els.reset.addEventListener("click", resetStudio);
-    els.canvas.addEventListener("pointerdown", beginReframe);
-    els.canvas.addEventListener("pointermove", moveReframe);
-    els.canvas.addEventListener("pointerup", endReframe);
-    els.canvas.addEventListener("pointercancel", endReframe);
-    document.querySelectorAll("[data-layout]").forEach((button) => button.addEventListener("click", () => selectLayout(button.dataset.layout)));
-    document.querySelectorAll("[data-grade]").forEach((button) => button.addEventListener("click", () => selectGrade(button.dataset.grade)));
-    document.querySelectorAll("[data-tone]").forEach((button) => button.addEventListener("click", () => selectTone(button.dataset.tone)));
-    document.querySelectorAll("[data-size]").forEach((button) => button.addEventListener("click", () => exportCover(button.dataset.size)));
-    window.addEventListener("beforeunload", releasePhotos);
+    for (const key of ['layout', 'grade']) {
+      document.querySelectorAll(`[data-${key}]`).forEach((button) => {
+        const active = button.dataset[key] === state[key];
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+    }
+    const [width, height] = sizes[state.layout];
+    canvas.width = Math.round(width * Math.min(1, 1080 / Math.max(width, height)));
+    canvas.height = Math.round(height * Math.min(1, 1080 / Math.max(width, height)));
+    $('layoutReadout').textContent = `${state.layout.toUpperCase()} / FOUR PANELS`;
+    $('captionCount').textContent = `${state.caption.length} / 54`;
+    syncCrop();
   }
 
-  function initialize() {
-    bindEvents();
-    renderPhotoTray();
-    renderPanelPicker();
-    updatePanelControls();
-    fitCanvasToLayout();
-    setStatus("Photos stay in this browser. Choose a panel and reframe the crop.", false);
+  panelNames.forEach((name, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = `${String(index + 1).padStart(2, '0')} ${name}`;
+    button.addEventListener('click', () => { state.selected = index; syncControls(); scheduleRender(); });
+    $('panelPicker').append(button);
+  });
+  for (const key of ['layout', 'grade']) {
+    document.querySelectorAll(`[data-${key}]`).forEach((button) => {
+      button.addEventListener('click', () => { state[key] = button.dataset[key]; syncControls(); scheduleRender(); });
+    });
   }
-
-  initialize();
+  $('captionInput').addEventListener('input', () => {
+    state.caption = $('captionInput').value;
+    $('captionCount').textContent = `${state.caption.length} / 54`;
+    scheduleRender();
+  });
+  document.querySelectorAll('[data-size]').forEach((button) => {
+    button.addEventListener('click', () => exportPNG(button.dataset.size));
+  });
+  $('resetButton').addEventListener('click', () => {
+    drag = null;
+    state.photos.forEach((photo) => URL.revokeObjectURL(photo.url));
+    Object.assign(state, { photos: [], panels: Array.from({ length: 3 }, freshPanel), selected: 0,
+      layout: 'portrait', grade: 'sunset', caption: 'THE CITY NEVER COOLS' });
+    $('captionInput').value = state.caption;
+    syncControls();
+    scheduleRender();
+    announce('Studio reset. Add a fresh scene.');
+  });
+  syncControls();
+  scheduleRender();
 })();

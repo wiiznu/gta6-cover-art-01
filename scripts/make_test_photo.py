@@ -1,78 +1,55 @@
-"""Generate original geometric test scenes; no photographs or borrowed artwork."""
+"""Generate geometric test scenes with code; these are not real photographs."""
 from argparse import ArgumentParser
-from math import sin
+from math import cos, sin, tau
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
 
-def gradient(size, upper, lower):
+def scene(size, variant):
+    """Draw an original imaginary city with sun, buildings and a palm."""
     width, height = size
     image = Image.new("RGB", size)
-    pixels = image.load()
+    draw = ImageDraw.Draw(image)
+    upper = (38, 34, 89) if variant == 0 else (24, 66, 104)
+    lower = (249, 143, 121) if variant == 0 else (227, 100, 166)
     for y in range(height):
         amount = y / max(1, height - 1)
-        color = tuple(round(a + (b - a) * amount) for a, b in zip(upper, lower))
-        for x in range(width):
-            pixels[x, y] = color
-    return image
-
-
-def scene(size, variant=0):
-    """Paint a stylized abstract skyline, sun, palms and a road with vector shapes."""
-    width, height = size
-    palettes = [
-        ((48, 30, 90), (248, 135, 112), (255, 209, 124)),
-        ((31, 47, 93), (209, 87, 139), (255, 170, 128)),
-    ]
-    sky, horizon, sun = palettes[variant % len(palettes)]
-    image = gradient(size, sky, horizon)
-    draw = ImageDraw.Draw(image)
-    sun_x = int(width * (.67 if variant else .53))
-    sun_y = int(height * .42)
-    radius = int(min(width, height) * .19)
-    draw.ellipse((sun_x - radius, sun_y - radius, sun_x + radius, sun_y + radius), fill=sun)
-    for stripe in range(6):
-        y = sun_y + radius * .25 + stripe * max(2, radius // 6)
-        draw.rectangle((sun_x - radius, y, sun_x + radius, y + max(2, radius // 18)), fill=horizon)
-    skyline = int(height * .69)
-    buildings = [
-        (.00, .55, .12), (.12, .42, .11), (.23, .50, .13), (.36, .37, .10),
-        (.47, .48, .14), (.63, .39, .11), (.75, .51, .12), (.88, .43, .14),
-    ]
-    for index, (left, top, span) in enumerate(buildings):
-        x0, x1 = int(width * left), int(width * min(1, left + span))
-        y0 = int(height * top)
-        draw.rectangle((x0, y0, x1, skyline), fill=(42 + index * 3, 34, 64 + index * 2))
-        for wx in range(x0 + 8, x1 - 4, 17):
-            for wy in range(y0 + 12, skyline - 5, 22):
-                if (wx // 17 + wy // 22 + index) % 3:
-                    draw.rectangle((wx, wy, wx + 5, wy + 8), fill=(255, 173, 137))
-    draw.polygon([(0, skyline), (width, skyline - 12), (width, height), (0, height)], fill=(34, 27, 52))
-    draw.polygon([(0, int(height * .87)), (int(width * .52), int(height * .73)),
-                  (width, int(height * .88)), (width, height), (0, height)], fill=(61, 39, 66))
-    draw.line((0, int(height * .87), int(width * .52), int(height * .73)), fill=(250, 143, 143), width=max(2, width // 300))
-    for base_x, lean in ((.08, .04), (.94, -.035)):
-        base_y = int(height * .88)
-        crown_x = int(width * (base_x + lean))
-        crown_y = int(height * .39)
-        draw.line((int(width * base_x), base_y, crown_x, crown_y), fill=(25, 22, 42), width=max(5, width // 75))
-        for leaf in range(9):
-            angle = 6.283 * leaf / 9
-            end_x = int(crown_x + width * .11 * sin(angle))
-            end_y = int(crown_y - height * .08 * (1 - 2 * leaf / 9))
-            draw.line((crown_x, crown_y, end_x, end_y), fill=(25, 22, 42), width=max(3, width // 130))
+        colour = tuple(round(a + (b - a) * amount) for a, b in zip(upper, lower))
+        draw.line((0, y, width, y), fill=colour)
+    radius = min(width, height) * .18
+    cx, cy = width * .64, height * .38
+    draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=(255, 211, 143))
+    horizon = int(height * .74)
+    for index in range(18):
+        x = int(width * index / 18)
+        top = int(height * (.39 + .2 * (sin(index * 5.7 + variant) + 1) / 2))
+        span = int(width / 17)
+        draw.rectangle((x, top, x + span, horizon), fill=(35, 31, 62))
+        for wx in range(x + 9, x + span - 5, 18):
+            for wy in range(top + 13, horizon - 7, 24):
+                if (wx + wy + index) % 4:
+                    draw.rectangle((wx, wy, wx + 4, wy + 7), fill=(255, 183, 155))
+    draw.rectangle((0, horizon, width, height), fill=(51, 39, 72))
+    draw.polygon(((width * .44, horizon), (width * .56, horizon),
+                  (width, height), (0, height)), fill=(27, 27, 47))
+    draw.line((width * .5, horizon, width * .5, height), fill=(250, 179, 153), width=5)
+    for base, lean in ((.12, .05), (.9, -.04)):
+        crown = (width * (base + lean), height * .3)
+        draw.line((width * base, height * .9, *crown), fill=(20, 27, 43), width=max(5, width // 100))
+        for leaf in range(10):
+            angle = tau * leaf / 10
+            tip = (crown[0] + width * .12 * cos(angle), crown[1] + height * .07 * sin(angle) + height * .025)
+            draw.line((*crown, *tip), fill=(20, 27, 43), width=max(3, width // 160))
     return image
 
 
 def make_photos(directory):
+    directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     paths = []
-    for name, size, variant in (
-        ("city-glow.png", (1440, 900), 0),
-        ("rose-hour.png", (1000, 1360), 1),
-    ):
-        path = directory / name
+    for variant, size in enumerate(((1440, 960), (1000, 1360))):
+        path = directory / f"generated-city-{variant + 1}.png"
         scene(size, variant).save(path, optimize=True)
         paths.append(path)
     return paths
@@ -81,6 +58,5 @@ def make_photos(directory):
 if __name__ == "__main__":
     parser = ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
-    for generated in make_photos(parser.parse_args().directory):
-        print(f"{generated} {generated.stat().st_size} bytes")
-
+    for path in make_photos(parser.parse_args().directory):
+        print(path)

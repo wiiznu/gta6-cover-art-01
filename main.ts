@@ -1,23 +1,32 @@
 import { cpSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { buildDossier } from './vendor/makefun-app.ts';
 
 const root = import.meta.dirname;
 const output = resolve(process.env.MAKEFUN_OUTPUT_DIR || '/output');
-mkdirSync(output, { recursive: true });
 
-// A rerun must not retain files from an earlier app or screenshot set.
-rmSync(join(output, 'app'), { recursive: true, force: true });
-rmSync(join(output, 'screenshots'), { recursive: true, force: true });
-cpSync(join(root, 'app'), join(output, 'app'), { recursive: true });
-const screenshotSource = join(root, 'screenshots');
-const screenshotTarget = join(output, 'screenshots');
-if (existsSync(screenshotSource)) {
-  cpSync(screenshotSource, screenshotTarget, { recursive: true });
-} else {
-  mkdirSync(screenshotTarget, { recursive: true });
+function contains(parent, child) {
+  const path = relative(parent, child);
+  return path === '' || (path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path));
 }
 
+// Reject overlap before removing previous generated artifacts.
+if (contains(root, output) || contains(output, root)) {
+  throw new Error('MAKEFUN_OUTPUT_DIR must be outside the repository tree.');
+}
+mkdirSync(output, { recursive: true });
+// A failed rebuild must never leave an earlier successful dossier beside new files.
+rmSync(join(output, 'dossier.json'), { force: true });
+rmSync(join(output, '.dossier.pending'), { force: true });
+for (const name of ['app', 'screenshots']) {
+  const target = join(output, name);
+  rmSync(target, { recursive: true, force: true });
+  const source = join(root, name);
+  if (existsSync(source)) cpSync(source, target, { recursive: true });
+  else mkdirSync(target, { recursive: true });
+}
+
+// The kit intentionally rejects missing screenshots; never fabricate evidence.
 const dossier = buildDossier(output, {
   text_max_bytes: 160 * 1024,
   screenshots: { max: 4, max_bytes: 256 * 1024 },
